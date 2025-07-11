@@ -208,7 +208,6 @@ export default function Home() {
             {verificationResult}
           </p>
         )}
-
         <h3 className="text-base mb-2 text-gray-700 font-semibold">Log Information</h3>
         <ul className="list-none p-3 bg-white border border-gray-200 rounded max-w-full break-words">
           {logs.map((log, index) => (
