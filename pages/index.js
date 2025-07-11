@@ -1,115 +1,202 @@
-import Image from "next/image";
-import { Geist, Geist_Mono } from "next/font/google";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+import { useSession, signIn, signOut } from 'next-auth/react';
+import { useEffect, useState } from 'react';
+import { Identity } from '@semaphore-protocol/identity';
+import { generateProof } from '@semaphore-protocol/proof';
+import { Group } from '@semaphore-protocol/group';
 
 export default function Home() {
+  const { data: session, status } = useSession();
+  const [identity, setIdentity] = useState(null);
+  const [group, setGroup] = useState(null);
+  const [verificationResult, setVerificationResult] = useState(null);
+  const [logs, setLogs] = useState([]); // State to store logs for UI display
+
+  // Helper function to add logs
+  const addLog = (message) => {
+    setLogs((prevLogs) => [...prevLogs, message]);
+  };
+
+  useEffect(() => {
+    if (status === 'authenticated') {
+      // Load or generate Semaphore identity
+      const storedPrivateKey = localStorage.getItem('semaphorePrivateKey');
+      addLog(`Stored private key: ${storedPrivateKey ? 'Loaded' : 'None'}`);
+      if (storedPrivateKey) {
+        try {
+          if (typeof storedPrivateKey !== 'string') {
+            throw new Error('Stored private key is not a string');
+          }
+          const newIdentity = new Identity(storedPrivateKey);
+          setIdentity(newIdentity);
+          addLog(`Identity loaded with commitment: ${newIdentity.commitment.toString()}`);
+        } catch (error) {
+          console.error('Error loading identity:', error);
+          setVerificationResult('Error loading identity: ' + error.message);
+          addLog('Error loading identity: ' + error.message);
+        }
+      } else {
+        const id = new Identity();
+        localStorage.setItem('semaphorePrivateKey', id.toString());
+        setIdentity(id);
+        addLog(`New identity created, commitment: ${id.commitment.toString()}`);
+        fetch('/api/zk/group/members', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ commitment: id.commitment.toString() }),
+        }).catch(error => {
+          console.error('Error adding member:', error);
+          setVerificationResult('Error adding member to group');
+          addLog('Error adding member to group: ' + error.message);
+        });
+      }
+    }
+  }, [status]);
+
+  const handleProveMembership = async () => {
+    if (!identity) {
+      setVerificationResult('No identity found. Please log in again.');
+      addLog('No identity found. Please log in again.');
+      return;
+    }
+
+    try {
+      // Fetch full group
+      const response = await fetch('/api/zk/group/full');
+      const groupData = await response.json();
+      console.log('Group data received:', groupData);
+      addLog(`Group data: ID=${groupData.id}, TreeDepth=${groupData.treeDepth || '20'}, MemberCount=${groupData.memberCount}, Root=${groupData.root}`);
+
+      if (!response.ok || !groupData.success) {
+        setVerificationResult(`Error: ${groupData.message || groupData.error || 'Failed to fetch group'}`);
+        addLog(`Error: ${groupData.message || groupData.error || 'Failed to fetch group'}`);
+        return;
+      }
+
+      // Validate group data
+      if (!groupData.id || !Array.isArray(groupData.members)) {
+        setVerificationResult(`Error: Invalid group data received (missing ${!groupData.id ? 'id' : 'members'})`);
+        addLog(`Error: Invalid group data received (missing ${!groupData.id ? 'id' : 'members'})`);
+        return;
+      }
+
+      // Use default treeDepth if missing
+      const treeDepth = groupData.treeDepth || 20;
+      addLog(`Using treeDepth: ${treeDepth}`);
+
+      // Initialize group
+      const groupId = groupData.id;
+      const members = groupData.members.map(BigInt);
+      const fetchedGroup = new Group(groupId, treeDepth, members);
+      setGroup(fetchedGroup);
+
+      // Check if the current identity is in the group
+      const userCommitment = identity.commitment;
+      console.log('User commitment:', userCommitment.toString());
+      console.log('Group members:', fetchedGroup.members.map(m => m.toString()));
+      addLog(`User commitment: ${userCommitment.toString()}`);
+      addLog(`Group has ${fetchedGroup.members.length} members`);
+
+      if (!fetchedGroup.members.includes(userCommitment)) {
+        setVerificationResult('Error: Your identity is not in the group. Please refresh and try again.');
+        addLog('Error: Your identity is not in the group.');
+        return;
+      }
+
+      // Generate ZK proof
+      const signal = BigInt(1);
+      const externalNullifier = BigInt(Math.floor(Math.random() * 1000000));
+      console.log('Generating proof with:', { signal: signal.toString(), externalNullifier: externalNullifier.toString() });
+      addLog(`Generating proof with: Signal=${signal.toString()}, ExternalNullifier=${externalNullifier.toString()}`);
+      const fullProof = await generateProof(identity, fetchedGroup, signal, externalNullifier);
+
+      // Send proof to server
+      const verifyResponse = await fetch('/api/zk/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fullProof }),
+      });
+      const verifyData = await verifyResponse.json();
+      setVerificationResult(verifyData.valid ? 'ZK login verified!' : 'Invalid proof');
+      addLog(verifyData.valid ? 'ZK login verified!' : `Proof verification failed: ${verifyData.error || 'Invalid proof'}`);
+    } catch (error) {
+      console.error('Error in handleProveMembership:', error);
+      setVerificationResult(`Error: ${error.message}`);
+      addLog(`Error in proof generation: ${error.message}`);
+    }
+  };
+if (status === 'loading') {
   return (
-    <div
-      className={`${geistSans.className} ${geistMono.className} grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]`}
-    >
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              pages/index.js
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+    <div className="font-sans p-10 text-center text-lg text-gray-600">
+      <span>Loading...</span>
     </div>
   );
+}
+
+if (status === 'authenticated') {
+  return (
+    <div className="p-8 font-sans max-w-xl mx-auto bg-gray-50 rounded-lg shadow-md">
+      <p className="text-lg text-green-700 font-bold mb-5">
+        ✅ Logged in successfully
+      </p>
+
+      <div className="flex gap-4 mb-5">
+        <button
+          onClick={signOut}
+          className="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded transition-colors duration-300"
+        >
+          Sign out
+        </button>
+
+        <button
+          onClick={handleProveMembership}
+          className="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 rounded transition-colors duration-300"
+        >
+          Prove you're a member
+        </button>
+      </div>
+
+      {verificationResult && (
+        <p
+          className={`font-bold mb-5 p-3 rounded ${
+            verificationResult.includes('Error')
+              ? 'text-red-600 bg-red-100'
+              : 'text-green-600 bg-green-100'
+          }`}
+        >
+          {verificationResult}
+        </p>
+      )}
+
+      <h3 className="text-base mb-2 text-gray-700 font-semibold">Log Information</h3>
+      <ul className="list-none p-3 bg-white border border-gray-200 rounded max-w-full break-words">
+        {logs.map((log, index) => (
+          <li
+            key={index}
+            className={`text-sm text-gray-700 py-1 break-words whitespace-pre-wrap ${
+              index !== logs.length - 1 ? 'border-b border-gray-200' : ''
+            }`}
+          >
+            {log}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+return (
+  <div className="p-8 font-sans text-center">
+    <p className="mb-4 text-2xl font-semibold ">
+      Semaphore + Oauth Demo
+    </p>
+    <button
+      onClick={() => signIn('google')}
+      className="bg-emerald-500 hover:bg-emerald-600 text-white py-3 px-6 rounded font-bold text-base transition-colors duration-300"
+    >
+      Login with Google
+    </button>
+  </div>
+);
 }
