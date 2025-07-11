@@ -1,4 +1,3 @@
-
 import { useSession, signIn, signOut } from 'next-auth/react';
 import { useEffect, useState } from 'react';
 import { Identity } from '@semaphore-protocol/identity';
@@ -26,14 +25,15 @@ export default function Home() {
         body: JSON.stringify({ commitment: commitment.toString() }),
       });
       const data = await response.json();
-      if (!response.ok || data.message.includes('Error')) {
-        throw new Error(data.message || 'Failed to add member to group');
+      if (!response.ok) {
+        throw new Error(data.message || `Server error: ${response.status}`);
       }
       addLog(`Successfully added commitment to group: ${data.message}`);
       return true;
     } catch (error) {
       console.error('Error adding member:', error);
       addLog(`Error adding member to group: ${error.message}`);
+      setVerificationResult(`Error: Failed to add identity to group: ${error.message}. Please try logging in again.`);
       return false;
     }
   };
@@ -66,7 +66,7 @@ export default function Home() {
           addLog(`New identity created, commitment: ${id.commitment.toString()}`);
           const added = await addToGroup(id.commitment);
           if (!added) {
-            setVerificationResult('Error: Failed to add new identity to group');
+            setVerificationResult('Error: Failed to add new identity to group. Please try logging in again.');
           }
         })();
       }
@@ -121,7 +121,7 @@ export default function Home() {
         addLog('Identity not in group, attempting to re-add...');
         const added = await addToGroup(userCommitment);
         if (!added) {
-          setVerificationResult('Error: Failed to add identity to group. Please clear local storage and try again.');
+          setVerificationResult('Error: Failed to add identity to group. Please clear local storage and try logging in again.');
           addLog('Error: Failed to add identity to group.');
           return;
         }
@@ -208,6 +208,7 @@ export default function Home() {
             {verificationResult}
           </p>
         )}
+
         <h3 className="text-base mb-2 text-gray-700 font-semibold">Log Information</h3>
         <ul className="list-none p-3 bg-white border border-gray-200 rounded max-w-full break-words">
           {logs.map((log, index) => (
