@@ -1,9 +1,7 @@
 import { Group } from '@semaphore-protocol/group';
 import { getServerSession } from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
-
-// In-memory group data (resets on server restart)
-let groupData = { id: 1, treeDepth: 20, members: [] };
+import { getGroupData, addMember } from '../../lib/groupData';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -47,13 +45,18 @@ export default async function handler(req, res) {
         return res.status(400).json({ message: 'Invalid commitment format' });
       }
 
+      const groupData = getGroupData();
       if (groupData.members.includes(commitment)) {
         console.log('Commitment already exists:', commitment);
         return res.status(200).json({ message: 'Member already exists' });
       }
 
-      groupData.members.push(commitment);
+      addMember(commitment);
       console.log('Added commitment:', commitment);
+
+      // Update group root
+      const group = new Group(groupData.id, groupData.treeDepth, groupData.members.map(BigInt));
+      groupData.root = group.root.toString();
       res.status(200).json({ message: 'Member added' });
     } catch (error) {
       console.error('Error adding member:', error.message, error.stack);
@@ -61,6 +64,7 @@ export default async function handler(req, res) {
     }
   } else if (req.method === 'GET') {
     try {
+      const groupData = getGroupData();
       res.status(200).json({ members: groupData.members });
     } catch (error) {
       console.error('Error loading group members:', error.message);

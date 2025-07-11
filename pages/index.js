@@ -25,14 +25,15 @@ export default function Home() {
         body: JSON.stringify({ commitment: commitment.toString() }),
       });
       const data = await response.json();
-      if (!response.ok || data.message.includes('Error')) {
-        throw new Error(data.message || 'Failed to add member to group');
+      if (!response.ok) {
+        throw new Error(data.message || `Server error: ${response.status}`);
       }
       addLog(`Successfully added commitment to group: ${data.message}`);
       return true;
     } catch (error) {
       console.error('Error adding member:', error);
       addLog(`Error adding member to group: ${error.message}`);
+      setVerificationResult(`Error: Failed to add identity to group: ${error.message}. Please sign out and log in again.`);
       return false;
     }
   };
@@ -65,7 +66,7 @@ export default function Home() {
           addLog(`New identity created, commitment: ${id.commitment.toString()}`);
           const added = await addToGroup(id.commitment);
           if (!added) {
-            setVerificationResult('Error: Failed to add new identity to group');
+            setVerificationResult('Error: Failed to add new identity to group. Please sign out and log in again.');
           }
         })();
       }
@@ -74,8 +75,8 @@ export default function Home() {
 
   const handleProveMembership = async () => {
     if (!identity) {
-      setVerificationResult('No identity found. Please log in again.');
-      addLog('No identity found. Please log in again.');
+      setVerificationResult('No identity found. Please sign out and log in again.');
+      addLog('No identity found. Please sign out and log in again.');
       return;
     }
 
@@ -85,6 +86,7 @@ export default function Home() {
       const groupData = await response.json();
       console.log('Group data received:', groupData);
       addLog(`Group data: ID=${groupData.id}, TreeDepth=${groupData.treeDepth || '20'}, MemberCount=${groupData.memberCount}, Root=${groupData.root}`);
+      addLog(`Group members: ${JSON.stringify(groupData.members)}`);
 
       if (!response.ok || !groupData.success) {
         setVerificationResult(`Error: ${groupData.message || groupData.error || 'Failed to fetch group'}`);
@@ -118,10 +120,20 @@ export default function Home() {
 
       if (!fetchedGroup.members.includes(userCommitment)) {
         addLog('Identity not in group, attempting to re-add...');
-        const added = await addToGroup(userCommitment);
+        // Retry up to 3 times
+        let retryCount = 0;
+        const maxRetries = 3;
+        let added = false;
+        while (retryCount < maxRetries && !added) {
+          added = await addToGroup(userCommitment);
+          retryCount++;
+          if (!added) {
+            addLog(`Retry ${retryCount} failed to add identity to group.`);
+          }
+        }
         if (!added) {
-          setVerificationResult('Error: Failed to add identity to group. Please clear local storage and try again.');
-          addLog('Error: Failed to add identity to group.');
+          setVerificationResult('Error: Failed to add identity to group after retries. Please sign out, clear local storage, and log in again.');
+          addLog('Error: Failed to add identity to group after retries.');
           return;
         }
         // Re-fetch group after adding
@@ -132,11 +144,12 @@ export default function Home() {
           addLog('Error: Failed to fetch group after retry');
           return;
         }
+        addLog(`Retry group members: ${JSON.stringify(retryGroupData.members)}`);
         const retryMembers = retryGroupData.members.map(BigInt);
         const retryGroup = new Group(retryGroupData.id, retryGroupData.treeDepth || 20, retryMembers);
         setGroup(retryGroup);
         if (!retryGroup.members.includes(userCommitment)) {
-          setVerificationResult('Error: Your identity is still not in the group. Please clear local storage and try again.');
+          setVerificationResult('Error: Your identity is still not in the group. Please sign out, clear local storage, and log in again.');
           addLog('Error: Identity still not in group after retry.');
           return;
         }
