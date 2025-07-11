@@ -1,7 +1,7 @@
 import { Group } from '@semaphore-protocol/group';
 import { getServerSession } from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
-import { getGroupData, addMember } from '../../../lib/groupData';
+import { getGroupData, addMember } from '../../../../lib/groupData';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');

@@ -1,4 +1,4 @@
-import { resetGroupData } from '../../../lib/groupData';
+import { resetGroupData } from '../../../../lib/groupData';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');

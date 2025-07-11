@@ -1,5 +1,5 @@
 import { Group } from '@semaphore-protocol/group';
-import { getGroupData } from '../../../lib/groupData';
+import { getGroupData } from '../../../../lib/groupData';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
