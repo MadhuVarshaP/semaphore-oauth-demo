@@ -1,4 +1,4 @@
-import { resetGroupData } from '../../../../lib/groupData';
+import { resetGroupData } from '../../../../lib/semaphore/group';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -12,11 +12,9 @@ export default async function handler(req, res) {
 
   if (req.method === 'POST') {
     try {
-      resetGroupData();
-      console.log('Group data reset');
+      await resetGroupData();
       res.status(200).json({ message: 'Group data reset' });
     } catch (error) {
-      console.error('Error resetting group data:', error.message);
       res.status(500).json({ message: 'Error resetting group data', error: error.message });
     }
   } else {
