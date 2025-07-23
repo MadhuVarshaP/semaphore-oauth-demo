@@ -106,7 +106,7 @@ export default async function handler(req, res) {
 
       if (!fullProof || !fullProof.proof ) {
         return res.status(500).json({
-          message: "Proof generation failed: missing proof or publicSignals"
+          message: "Proof generation failed: missing proof "
         });
       }
 

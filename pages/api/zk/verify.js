@@ -12,13 +12,14 @@ export default async function handler(req, res) {
 
       // Check for required fields
       if (
-        !fullProof.proof ||
-        !fullProof.publicSignals
+        !fullProof.proof 
       ) {
         return res.status(400).json({ valid: false, error: 'Invalid fullProof structure' });
       }
 
-      const isValid = await verifyProof(fullProof);
+      // Pass the correct tree depth (e.g., 20)
+      const treeDepth = 20; 
+      const isValid = await verifyProof(fullProof, treeDepth);
       res.status(200).json({ valid: isValid });
     } catch (error) {
       console.error('Verification error:', error);
